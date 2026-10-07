@@ -1,0 +1,23 @@
+# ============================================================
+# 版权红线：CS2 提取资产一律不入库（Valve IP，仅限本地使用）
+# 在新设备上用 Source 2 Viewer 重新导出，见 HANDOFF.md 第 3 节
+# ============================================================
+prototype/cs2_agent*
+prototype/*_psd_*.png
+prototype/*_tga_*.png
+prototype/*vmat_g*.png
+prototype/physics_playerflesh.png
+
+# ---- 临时 / 缓存 ----
+__pycache__/
+*.pyc
+*.blend1
+.godot/
+*.import
+
+# ---- 系统 ----
+Thumbs.db
+.DS_Store
+
+# 一次性测试产物（可由 hello_headless 重生成）
+prototype/skilltest/
