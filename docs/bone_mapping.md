@@ -41,6 +41,34 @@ CS2 角色模型用的是 Valve 骨骼体系，命名形如 `ValveBiped.Bip01_Sp
 | Bip01_R_Foot | 22 | `foot.R_102` | |
 | Bip01_R_Toe0 | 22 | `toes.R_101` | |
 
+## 真实 CS2 干员映射表（cs2_new 命名，2026-10-09 ctm_sas 实测）
+
+> ⚠️ 真实干员的骨骼命名**不是** ValveBiped（无 `Bip01_` 前缀），而是 CS2 新命名体系。
+> 实测来源：`prototype/cs2_agent_export/cs2_agent.glb`（Source 2 Viewer CLI 导出，94 骨）。
+> 映射表已写入 `blender/retarget_cs2_to_miku.py` 的 `BONE_MAP_NEW`，
+> 由 `select_bone_map()` 自动识别 —— 实测结果：**MAPPED 21 / MISSING 0**。
+
+| CS2 骨骼（实测名） | Miku 骨骼 | 备注 |
+|---|---|---|
+| `pelvis` | `hips_106` | 根骨（其上还有 `root_motion`，不映射） |
+| `spine_1` | `spine_95` | 4 节脊柱取第 2 节驱动下胸椎 |
+| `spine_3` | `chest_94` | 第 4 节（最上）驱动上胸椎 |
+| `neck_0` | `neck_50` | |
+| `head_0` | `head_49` | |
+| `clavicle_L` / `clavicle_R` | `shoulder.L_69` / `shoulder.R_88` | |
+| `arm_upper_L` / `arm_upper_R` | `upper_arm.L_68` / `upper_arm.R_87` | |
+| `arm_lower_L` / `arm_lower_R` | `lower_arm.L_67` / `lower_arm.R_86` | |
+| `hand_L` / `hand_R` | `hand.L_66` / `hand.R_85` | |
+| `leg_upper_L` / `leg_upper_R` | `upper_leg.L_100` / `upper_leg.R_105` | |
+| `leg_lower_L` / `leg_lower_R` | `lower_leg.L_99` / `lower_leg.R_104` | |
+| `ankle_L` / `ankle_R` | `foot.L_97` / `foot.R_102` | |
+| `ball_L` / `ball_R` | `toes.L_96` / `toes.R_101` | 脚掌球骨 → 脚趾 |
+
+**不映射的新命名骨**：`root_motion`（根位移）、`spine_0` / `spine_2`（四节脊柱只取两节，
+约束为单源复制，多源会互相覆盖）、`scapula_*`（肩胛）、`*_TWIST` / `*_TWIST1`（变形辅助）、
+`jiggle_*`（布料/装备抖动）、`scap_*_AIMAT` / `scap_AIMUP`（瞄准层）、`wpnPivot` / `wpn`（武器挂点）、
+`eyeball_*` / `eye_target`、全部 `finger_*`。
+
 ## 手指骨（CS2 有 5 指 ×3 节，cat 也有，可选映射）
 
 CS2 侧 `Bip01_L_Finger0`（拇指）/ `Finger1`（食指）/ `Finger2`（中指）/ `Finger3`（无名）/ `Finger4`（小指），

@@ -114,6 +114,8 @@ lo2 = bpy.data.objects.new("F", ld2); bpy.context.collection.objects.link(lo2)
 lo2.location = (ctr[0], -2.5, ctr[2] + 1.0); lo2.rotation_euler = (math.radians(90), 0, 0)
 
 out = ARGS.get("--outdir", "C:/Users/Administrator/WorkBuddy/cs2/miku-fps/prototype/render")
+# ⚠️ 实测坑：无头模式下相对 outdir 会被 Blender 解析到「当前盘根」，必须转绝对路径
+out = os.path.abspath(out)
 os.makedirs(out, exist_ok=True)
 sc.frame_set(int(ARGS.get("--frame", "1")))
 

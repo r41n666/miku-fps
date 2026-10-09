@@ -3,6 +3,10 @@
 > 执行时间：2026-10-07
 > 工具：Blender 5.2.2 LTS（`D:\Program Files\Blender Foundation\Blender 5.2\blender.exe`）
 > 判定：**✅ PASS — 骨骼重定向链路已跑通，CS2 动画成功驱动 Miku 模型**
+>
+> ⚠️ **2026-10-09 更新**：真实干员 `ctm_sas` 端到端验证已在新设备完成
+> （MAPPED 21/21、6 动作渲染通过）——详见文末「九、真实干员验证」。本文档
+> 前半部分为仿真骨架阶段记录，保留作回归依据。
 
 ---
 
@@ -184,9 +188,100 @@ BL="D:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
 
 ## 八、遗留风险
 
-- [ ] 真实 CS2 干员模型的骨骼命名未实测（当前用仿真骨架验证链路）
-- [ ] CS2 真实动画的轴向/单位与 MMD 不同，可能需要额外的轴向补偿旋转
+- [x] ~~真实 CS2 干员模型的骨骼命名未实测（当前用仿真骨架验证链路）~~
+      → **2026-10-09 已实测：命名与 ValveBiped 完全不同，见第九节**
+- [x] ~~CS2 真实动画的轴向/单位与 MMD 不同，可能需要额外的轴向补偿旋转~~
+      → **2026-10-09 已实测：需要「骨架转正」修复，见第九节**
 - [ ] 约束生效时模型整体上移约 1.2 单位（BBOX 从 `z:-0.04..2.98` 变为 `z:1.19..3.65`），
       推测是 MMD 根骨偏移所致，接真实模型后需重新校准原点
 - [ ] 手指骨未映射，持枪手势细节可能不足
 - [ ] 双马尾/猫耳在重定向后是否被拉伸，需看渲染图确认
+
+---
+
+## 九、真实干员验证（2026-10-09，新设备，ctm_sas）
+
+> 判定：**✅ PASS — 真实 CS2 干员动画成功驱动 Miku**。
+> 环境：Blender 5.2.2（`C:\Tools\Blender\...`）+ Source 2 Viewer **CLI** 20.0（全命令行化）。
+> 资产：`agents/models/ctm_sas/ctm_sas.vmdl_c` → `prototype/cs2_agent_export/cs2_agent_anim6.glb`（3.3MB，含 6 个世界动作）。
+
+### 9.1 关键发现一：真实干员骨骼命名 ≠ ValveBiped
+
+实测 ctm_sas 为 **CS2 新命名体系**（无 `Bip01_` 前缀）：
+
+```
+pelvis / spine_0..3 / neck_0 / head_0 / clavicle_L / arm_upper_L /
+arm_lower_L / hand_L / leg_upper_L / leg_lower_L / ankle_L / ball_L …（94 骨）
+```
+
+- 修复：`retarget_cs2_to_miku.py` 新增 `BONE_MAP_NEW`（21 根映射），
+  并由 `select_bone_map()` 按实际骨名**自动识别**（旧 ValveBiped 保留作回归）。
+- 结果：**`###MAPPED### 21` + `###MISSING### []` + `###DUP### []`**。
+- 脊柱取骨策略：`spine_95 ← spine_1`（下段）、`chest_94 ← spine_3`（上段）；
+  `spine_0/2` 不驱动（约束为单源复制，多源互相覆盖）。
+
+### 9.2 关键发现二：「躺平」问题（本阶段最大的坑）
+
+**现象**：S2V 导出的干员 glb 导入 Blender 后，整具骨架是「躺平」状态——
+pelvis/spine/head 的 rest 骨方向 ≈ 世界 **-Y**（腿 ≈ +Y）。约束执行的是
+**armature 空间**朝向匹配（实测：转对象无效、只认骨架数据），
+⇒ 直接跑约束，Miku 被驱动成**躺姿**（首轮渲染已复现）。
+
+**修复**（`retarget_cs2_to_miku.py` → `align_cs2_upright()`，幂等）：
+
+```
+对象级旋转（rest 骨方向 → +Z）+ bpy.ops.object.transform_apply(rotation=True)
+```
+
+把转正烘焙进骨骼数据；局部动画值不变，蒙皮/世界结果不破坏。
+**验证**：修复后 Miku 与 CS2 的 5 组关键骨世界方向逐项一致
+（pelvis / spine / arm / leg / head，数值级吻合，归一化后完全相同）。
+
+### 9.3 渲染验证（6 动作，`prototype/cs2_agent_export/render_final/`）
+
+| 动作 | bright_ratio | 姿态判读（人工） |
+|---|---|---|
+| idle_rifle | 0.2533 | 站立持枪待机（前倾） |
+| idle_crouch_rifle | 0.2534 | 低姿持枪 |
+| walk_n_rifle | 0.2668 | 跨步前进（持枪位） |
+| run_n_rifle | 0.2722 | 前倾冲刺 |
+| crouch_n_rifle | 0.2898 | 深蹲 |
+| jump_stand_rifle | 0.2516 | 腾空收腿 |
+
+渲染参数：`--hide-cs2 1 --aim 1 --az 45 --elev 5 --dist 3.6`（`--aim` 为本次新增的
+自动对准相机模式）。判定标准：bright_ratio > 0.02 → 全过（6/6）。
+
+### 9.4 其他实测结论
+
+- **无 death 动画**：`die/dead/ragdoll/dying/death` 关键字均 0 命中——CS2 玩家死亡
+  是 ragdoll 物理，无关键帧死亡动画。5 动作集调整为 **idle / run / walk / crouch / jump**，
+  可另选 `flinch_*`（45 条受击反应）补充。
+- **动画命名**：世界（第三人称）动作为 `animation/anims/world/<weapon>/...`；
+  步枪集示例：`idle_rifle / idle_crouch_rifle / walk_n_rifle / run_n_rifle /
+  crouch_n_rifle / jump_stand_rifle`（`_n` = 朝北）。
+- **源网格在 Blender 中渲染异常**：cs2 士兵网格在 Blender 里呈「绑定位移」状
+  （腿朝上等）。经查：GLB 文件本身是规范 Y-up 站立（mesh 沿 Y 2 米），
+  疑似 Blender 对「多根节点 skin 导出结构」的导入处理问题；
+  **不影响重定向链路**（约束只取骨骼数据，骨骼数学已验证一致）。
+  如需源网格可视化，建议用 S2V 自带预览器确认。
+
+### 9.5 本次交付的脚本改动（`blender/`）
+
+| 文件 | 改动 |
+|---|---|
+| `retarget_cs2_to_miku.py` | + `BONE_MAP_NEW` / `select_bone_map()` / `align_cs2_upright()`；修 `MISSING` 判断链路 |
+| `render_check.py` | + `--hide-cs2` / `--hide-miku` / `--actions`（单会话多动作）/ `--aim` 自动对位；outdir 强制绝对路径 |
+| `render_probe.py` | outdir 强制绝对路径（无头模式下相对路径会被解析到盘根） |
+| `check_render.py` | `--dir` 强制绝对路径（同因） |
+
+### 9.6 遗留事项（下一阶段）
+
+- [ ] **朝向校验**：miku 迈步方向与面朝是否一致（walk_n 朝北）；如需修正，
+      在转正环节追加绕 Z 的 180°（或改对齐基准轴）。
+- [ ] **骨盆位移未传递**：当前只做旋转（Copy Rotation）；蹲姿高度、跳跃升腾、
+      行走起伏来自腿部弯折，无根位移。后续烘焙时考虑叠加 pelvis 平移。
+- [ ] **扭转校准**：绝对朝向匹配含 roll；如手臂/腿出现轴向扭转，
+      按骨加常量补偿（渲染图上暂未发现明显扭转）。
+- [ ] **全量动画集**：全量导出（2091 动画,1.1GB）已在本机 `prototype/`（不入库）；
+      进 Godot 前需按玩法选型（移动/射击/换弹等 ~20 条）。
+- [ ] **烘焙 → FBX → Godot**：下一步按 `docs/next_steps.md` 第六节执行。

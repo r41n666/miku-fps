@@ -37,6 +37,10 @@ def main():
         return
     args = argv[argv.index("--") + 1:]
     d = args[args.index("--dir") + 1] if "--dir" in args else None
+    # ⚠️ 实测坑：无头模式下 Blender 以「当前盘根」解析相对路径，
+    #    bpy.data.images.load 用相对路径会报 No such file ⇒ 必须转绝对。
+    if d:
+        d = os.path.abspath(d)
     if not d or not os.path.isdir(d):
         print("bad dir:", d)
         return

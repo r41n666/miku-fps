@@ -110,6 +110,8 @@ def mesh_bounds():
     for o in bpy.data.objects:
         if o.type != 'MESH':
             continue
+        if getattr(o, "hide_render", False):
+            continue  # 被 --hide-cs2 藏起来的源网格不参与取景
         # 排除辅助网格（glTF_not_exported 集合 + 遗留的默认 Cube）
         in_helper = any(c.name == "glTF_not_exported"
                         for c in o.users_collection)
@@ -172,6 +174,11 @@ def place_camera(cam, arm, azimuth_deg=45):
          ⇒ 默认用 45°，不要用公式"推导"方位角。
       2. rot_x=80° 是俯视，比平视稳（平视时模型容易滑出画面）。
       3. 灯光要与相机同侧。
+
+    --aim 1 模式（2026-10-09 新增，站姿验证用）：
+      固定 loc/rot 是为「躺平」模型调的，站姿会被裁头。
+      --aim 1 时相机自动对准 bounds 中心：--az（方位角）/ --elev（仰角）/
+      --dist（距离，默认按身高自适应）。
     """
     mn, mx, ctr, h = mesh_bounds()
     print("###MESH_BOUNDS###", json.dumps({
@@ -179,6 +186,20 @@ def place_camera(cam, arm, azimuth_deg=45):
         "max": [round(v, 3) for v in mx],
         "center": [round(v, 3) for v in ctr],
         "height": round(h, 3)}, ensure_ascii=False))
+
+    if ARGS.get("--aim") == "1":
+        import mathutils
+        az = math.radians(float(ARGS.get("--az", "45")))
+        elev = math.radians(float(ARGS.get("--elev", "10")))
+        dist = float(ARGS.get("--dist", "0")) or max(2.6, h * 1.6)
+        cam.location = (ctr[0] + dist * math.cos(elev) * math.sin(az),
+                        ctr[1] - dist * math.cos(elev) * math.cos(az),
+                        ctr[2] + dist * math.sin(elev))
+        direction = mathutils.Vector(ctr) - cam.location
+        cam.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+        print("###AIM_CAM### az=%s elev=%s dist=%.2f" % (
+            ARGS.get("--az", "45"), ARGS.get("--elev", "10"), dist))
+        return
 
     # 已实测有效的相机参数（方位角 45° 是唯一渲出内容的组合之一）
     cam.location = (2.5, -3.5, 1.6)
@@ -236,6 +257,10 @@ def main():
     cs2_p = ARGS.get("--cs2")
     miku_p = ARGS.get("--miku")
     outdir = ARGS.get("--outdir", "C:/Users/Administrator/WorkBuddy/cs2/miku-fps/prototype/render")
+    # ⚠️ 实测坑：无头模式下相对 outdir 会被 Blender 解析到「当前盘根」
+    #    （如 prototype/... 写成 C:\prototype\...），文件不落回购内。
+    #    必须转绝对路径，否则 os.path.exists 检查为 False 而图其实已渲染。
+    outdir = os.path.abspath(outdir)
     frames = [int(x) for x in ARGS.get("--frames", "1,10,20").split(",")]
 
     if not (cs2_p and miku_p):
@@ -260,6 +285,29 @@ def main():
             if o.type == 'ARMATURE' and o.name != cs2.name][0]
     print("###MIKU###", miku.name, len(miku.data.bones))
 
+    # --hide-cs2 1：隐藏 CS2 源网格。两者同原点时源网格会遮挡 Miku，
+    # 重定向验证要看的正是 Miku 的姿态 ⇒ 默认只展示 Miku。
+    if ARGS.get("--hide-cs2") == "1":
+        n_hidden = 0
+        for o in bpy.data.objects:
+            if o.type != 'MESH':
+                continue
+            if o.name.startswith(cs2.name) or o.parent is cs2:
+                o.hide_render = True
+                n_hidden += 1
+        print("###HIDDEN_CS2_MESHES###", n_hidden)
+
+    # --hide-miku 1：只展示 CS2 源网格（诊断用：确认源头动画姿态）
+    if ARGS.get("--hide-miku") == "1":
+        n_hidden = 0
+        for o in bpy.data.objects:
+            if o.type != 'MESH':
+                continue
+            if o.name.startswith("Object") or o.name.startswith("Icosphere"):
+                o.hide_render = True
+                n_hidden += 1
+        print("###HIDDEN_MIKU_MESHES###", n_hidden)
+
     # 导入完成后清理辅助网格，否则包围盒被撑大导致取景错误
     purge_helpers()
 
@@ -282,6 +330,44 @@ def main():
                                        if o.type == 'LIGHT']))
     print("###ENGINE###", sc.render.engine, "world=",
           json.dumps([round(v, 3) for v in sc.world.color]))
+
+    # ---- 多动作模式：一次会话内逐个切换动作渲染样本帧 ----
+    # 用途：真实 CS2 干员一次导出可含多个动作（idle/walk/run/...），
+    #       逐个渲染验证，避免反复启动 Blender 重复导入大模型。
+    actions_arg = ARGS.get("--actions")
+    print("###ACTIONS_ALL###",
+          json.dumps(sorted(a.name for a in bpy.data.actions), ensure_ascii=False))
+    if actions_arg:
+        wanted = [w.strip().lower() for w in actions_arg.split(",") if w.strip()]
+        ad = getattr(cs2, "animation_data", None)
+        if ad is None:
+            ad = cs2.animation_data_create()
+        for w in wanted:
+            hits = [a for a in bpy.data.actions if w in a.name.lower()]
+            if not hits:
+                print("###ACTION_MISSING###", w)
+                continue
+            # 精确优先：名字以 w 结尾者优先，其次名字最短
+            hits.sort(key=lambda a: (not a.name.lower().endswith(w), len(a.name)))
+            act = hits[0]
+            try:
+                ad.action = act
+                slots = getattr(act, "slots", None)
+                if slots and len(slots) > 0 and hasattr(ad, "action_slot"):
+                    ad.action_slot = slots[0]
+            except Exception as e:
+                print("###ACTION_ASSIGN_FAIL###", act.name, repr(e))
+                continue
+            fr = act.frame_range
+            f = int(fr[0] + (fr[1] - fr[0]) * 0.3)  # 取动作 30% 处做样本帧
+            sc.frame_set(f)
+            sc.render.filepath = os.path.join(
+                outdir, "act_%s.png" % act.name.rsplit("/", 1)[-1])
+            bpy.ops.render.render(write_still=True)
+            print("###RENDERED_ACT###", act.name, "frame=", f,
+                  "exists=%s" % os.path.exists(sc.render.filepath))
+        print("###DONE###")
+        return
 
     for f in frames:
         sc.frame_set(f)

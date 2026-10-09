@@ -2,16 +2,20 @@
 
 > 目标：在投入 Godot 工程开发之前，先验证「CS2 动画能否重定向到 Miku 骨骼」。
 > 这是整个项目的 **go/no-go 关口**。
+>
+> ✅ **2026-10-09：关口已通过（真实干员版）。** 工具链已装、真实干员 ctm_sas 端到端
+> 跑通（MAPPED 21 / MISSING 0，6 动作渲染通过）。本文档保留作操作参考；
+> 最新状态与下一步请看 `HANDOFF.md` 第 7 节与 `docs/validation_report.md` 第九节。
 
 ## 当前进度
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
 | 资产核查 | ✅ 完成 | 见 `docs/preflight_report.md` |
-| 骨骼映射表 | ✅ 完成 | 见 `docs/bone_mapping.md`（23 根核心骨） |
-| 重定向脚本 | ✅ 完成 | `blender/retarget_cs2_to_miku.py`（可直接在 Blender 运行） |
-| 工具链安装 | ⬜ 待执行 | Blender 需装，Source 2 Viewer 需下载 |
-| **动画验证** | ⬜ **待验证** | ← **go/no-go 关口** |
+| 骨骼映射表 | ✅ 完成 | 见 `docs/bone_mapping.md`（双命名：ValveBiped + CS2 新命名） |
+| 重定向脚本 | ✅ 完成 | `blender/retarget_cs2_to_miku.py`（含自动选表 + 骨架转正） |
+| 工具链安装 | ✅ 完成 | 新设备 2026-10-09 安装（路径见 `HANDOFF.md` 第 2 节） |
+| **动画验证** | ✅ **通过** | 真实干员 6 动作渲染验证（见 `docs/validation_report.md` 第九节） |
 
 ## 第一步：安装 Blender（无需联网）
 

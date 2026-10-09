@@ -32,6 +32,8 @@ import bpy
 import sys
 import os
 import json
+import math
+from mathutils import Vector
 
 # ============================================================
 # 配置
@@ -41,9 +43,15 @@ MIKU_MODEL = "cat_hatsune_miku"   # GUI 模式：Miku armature 对象名
 
 # ============================================================
 # 骨骼映射表：CS2 骨骼 → Miku 骨骼（Miku 侧带 _NN 序号后缀）
-# 依据 docs/bone_mapping.md，已由 Blender 实测校准
+# 依据 docs/bone_mapping.md + 2026-10-09 ctm_sas 实测。
+#
+# ⚠️ 两套 CS2 命名并存，运行时由 select_bone_map() 自动识别：
+#   · ValveBiped（旧命名，带 Bip01_ 前缀）—— 仿真骨架 fake_cs2.glb 回归用
+#   · cs2_new（新命名，无前缀）—— 真实 CS2 干员实测：
+#       pelvis / spine_0..3 / neck_0 / head_0 / clavicle_L / arm_upper_L /
+#       arm_lower_L / hand_L / leg_upper_L / leg_lower_L / ankle_L / ball_L
 # ============================================================
-BONE_MAP = {
+BONE_MAP_OLD = {
     "Bip01_Pelvis":       "hips_106",
     "Bip01_Spine":        "spine_95",
     "Bip01_Spine1":       "spine_95",     # 合并到下胸椎
@@ -67,6 +75,34 @@ BONE_MAP = {
     "Bip01_R_Calf":       "lower_leg.R_104",
     "Bip01_R_Foot":       "foot.R_102",
     "Bip01_R_Toe0":       "toes.R_101",
+}
+
+# 真实 CS2 干员（ctm_sas，2026-10-09 于 prototype/cs2_agent_export/cs2_agent.glb
+# 实测命名）。脊柱 4 节取骨策略：spine_95 ← spine_1（下段）、
+# chest_94 ← spine_3（上段）；spine_0/2 不直接驱动（约束是单源复制，
+# 多源会互相覆盖；若渲染后躯干弯折不足，可在视觉校准阶段调整）。
+BONE_MAP_NEW = {
+    "pelvis":      "hips_106",
+    "spine_1":     "spine_95",
+    "spine_3":     "chest_94",
+    "neck_0":      "neck_50",
+    "head_0":      "head_49",
+    "clavicle_L":  "shoulder.L_69",
+    "arm_upper_L": "upper_arm.L_68",
+    "arm_lower_L": "lower_arm.L_67",
+    "hand_L":      "hand.L_66",
+    "clavicle_R":  "shoulder.R_88",
+    "arm_upper_R": "upper_arm.R_87",
+    "arm_lower_R": "lower_arm.R_86",
+    "hand_R":      "hand.R_85",
+    "leg_upper_L": "upper_leg.L_100",
+    "leg_lower_L": "lower_leg.L_99",
+    "ankle_L":     "foot.L_97",
+    "ball_L":      "toes.L_96",
+    "leg_upper_R": "upper_leg.R_105",
+    "leg_lower_R": "lower_leg.R_104",
+    "ankle_R":     "foot.R_102",
+    "ball_R":      "toes.R_101",
 }
 
 # CS2 侧骨骼名候选。
@@ -168,12 +204,78 @@ def find_miku_bone(arm, base):
 
 
 # ============================================================
+# 映射表自动选择（两套 CS2 命名并存）
+# ============================================================
+def select_bone_map(cs2_arm):
+    """按 CS2 骨架实际骨名自动选择映射表。
+
+    · 含 Bip01 前缀 → ValveBiped 旧命名（仿真骨架回归测试用）
+    · 含 pelvis 且无前缀 → cs2_new（真实干员，2026-10-09 ctm_sas 实测）
+    · 都不匹配 → 返回并集兜底，让 MISSING 报告暴露真实骨名差异
+    """
+    names = {b.name for b in cs2_arm.data.bones}
+    if any("Bip01" in n for n in names):
+        print("###BONE_MAP_SELECTED### ValveBiped(OLD)")
+        return BONE_MAP_OLD
+    if "pelvis" in names or any(n.endswith(".pelvis") for n in names):
+        print("###BONE_MAP_SELECTED### cs2_new(REAL_AGENT)")
+        return BONE_MAP_NEW
+    print("###BONE_MAP_SELECTED### UNKNOWN fallback=union")
+    print("###CS2_BONE_SAMPLE###",
+          json.dumps(sorted(names)[:40], ensure_ascii=False))
+    return {**BONE_MAP_OLD, **BONE_MAP_NEW}
+
+
+# ============================================================
+# CS2 骨架转正（2026-10-09 实测修复：S2V 导出的干员导入后「躺平」）
+# ============================================================
+def align_cs2_upright(cs2_arm):
+    """把「躺平」的 CS2 骨架转正，使 armature 空间为站姿（幂等）。
+
+    背景：S2V 导出的 ctm_sas glb 在 Blender 里整体躺平
+    （pelvis/spine/head 骨方向 ≈ 世界 -Y）。而 Copy Rotation 约束执行的
+    是【armature 空间】朝向匹配 ⇒ 骨架数据不转正，Miku 会被驱动成躺姿。
+    修复：对象级旋转（rest 骨方向 → +Z）+ transform_apply 烘焙进骨骼数据；
+    局部动画值不变，世界结果随矩阵同步变化，蒙皮不受影响。
+    实测：修复后 Miku 与 CS2 的关键骨世界方向逐项一致（5/5）。
+    """
+    bone = cs2_arm.data.bones.get("pelvis")
+    if bone is None:
+        for b in cs2_arm.data.bones:
+            if "pelvis" in b.name.lower():
+                bone = b
+                break
+    if bone is None:
+        print("###CS2_UPRIGHT_FIX### skip (no pelvis bone)")
+        return False
+    d = bone.matrix_local.col[1].to_3d().normalized()
+    up = Vector((0.0, 0.0, 1.0))
+    ang = math.degrees(d.angle(up))
+    if ang <= 25.0:
+        print("###CS2_UPRIGHT_FIX### not needed (pelvis up-offset %.1f deg)" % ang)
+        return False
+    q = d.rotation_difference(up)
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    cs2_arm.select_set(True)
+    bpy.context.view_layer.objects.active = cs2_arm
+    cs2_arm.matrix_world = q.to_matrix().to_4x4() @ cs2_arm.matrix_world
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    bpy.context.view_layer.update()
+    print("###CS2_UPRIGHT_FIX### applied %.1f deg (was %.1f)" % (
+        math.degrees(q.angle), ang))
+    return True
+
+
+# ============================================================
 # 核心：建立约束
 # ============================================================
 def build_constraints(cs2_arm, miku_arm):
     made, missing, duplicated = [], [], []
+    align_cs2_upright(cs2_arm)         # ← 必须最先执行（躺平修复，幂等）
+    bone_map = select_bone_map(cs2_arm)
 
-    for cs2_base, miku_base in BONE_MAP.items():
+    for cs2_base, miku_base in bone_map.items():
         miku_name = find_miku_bone(miku_arm, miku_base)
         cs2_name = find_cs2_bone(cs2_arm, cs2_base)
 

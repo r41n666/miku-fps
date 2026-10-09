@@ -1,6 +1,6 @@
 # 交接说明（HANDOFF）· miku-fps
 
-> 最后更新：2026-10-07 23:15
+> 最后更新：2026-10-09 11:50（新设备接手 + 真实干员链路跑通）
 > 用途：在另一台设备上接手本项目。接手前**必读第 2 节（环境）与第 6 节（红线）**。
 
 ---
@@ -8,40 +8,48 @@
 ## 1. 项目现状
 
 **miku-fps** —— 类 CS 的 FPS 原型，T/CT 阵营都用 `cat_hatsune_miku.glb`（111 骨），
-靠配色/附件区分阵营。动画源用 **CS2 干员模型**（ValveBiped 骨骼）。
+靠配色/附件区分阵营。动画源用 **CS2 干员模型**（CS2 新命名骨骼，非 ValveBiped）。
 
 ### 已完成（全部实测验证）
 
 | 事项 | 结果 |
 |---|---|
 | 资产核查 | cat 模型 111 骨 / Z-up / **标准 T-pose** / 21 根必需骨零缺失 |
-| 骨骼映射表 | 23 根（docs/bone_mapping.md），**21/21 实测映射成功** |
-| 重定向链路 | 仿真 CS2 骨架端到端跑通，渲染证实动作迁移生效 |
-| Blender 踩坑 | 8 条 API 坑 + 渲染取景坑，全部沉淀（见第 5 节） |
+| 骨骼映射表 | 两套命名（ValveBiped + CS2 新命名），**两套均实测映射成功** |
+| 重定向链路 | 仿真骨架 + **真实干员 ctm_sas 均端到端跑通**（MAPPED 21 / MISSING 0） |
+| 真实干员渲染验证 | **6 动作（idle/蹲/走/跑/蹲行/跳）渲染通过**，bright_ratio 0.25~0.29 |
+| Blender 踩坑 | API/渲染/坐标坑全量沉淀（见第 5 节 + docs/validation_report.md 第九节） |
 
 ### 判定
 
-**go/no-go = PASS**。剩下的工作是把真实 CS2 干员接进已验证的链路。
+**go/no-go = PASS（真实干员版）**。剩余工作：朝向校验 → 烘焙 → Godot 工程。
 
-### 当前卡点
+### 当前状态
 
-`cs2_agent.gltf/.bin`（约 1.1GB）已在本机导出，**未入库**（版权 + 体积，见第 6 节）。
-新设备需重新导出（第 3 节），然后跑第 4 节的命令。
+`cs2_agent.glb`（全量 1.1GB / 2091 动画）与精简版 `cs2_agent_anim6.glb`（3.3MB / 6 动作）
+均已在本机 `prototype/cs2_agent_export/`（**不入库**，版权 + 体积，见第 6 节）。
+新设备重新导出：见第 3 节（已改为 CLI 一条命令）。
 
 ---
 
 ## 2. 环境清单
 
-### 本机（Windows）路径 —— 换设备后路径会变，只作参考
+### 当前设备（2026-10-09 接手验证）
 
-| 工具 | 本机路径 |
+| 工具 | 当前路径 |
 |---|---|
-| Blender 5.2.2 LTS | `D:\Program Files\Blender Foundation\Blender 5.2\blender.exe` |
-| Source 2 Viewer | `C:\Users\Administrator\Desktop\Source2Viewer.exe`（自包含，免安装） |
-| CS2 安装目录 | `D:\Program Files\steam\steamapps\common\Counter-Strike Global Offensive\` |
-| Godot 4.7.2 | `C:\Users\Administrator\Desktop\Godot_v4.7.2-stable_win64_console.exe` |
+| Blender 5.2.2 LTS | `C:\Tools\Blender\Blender Foundation\Blender 5.2\blender.exe` |
+| Source 2 Viewer 20.0 GUI | `C:\Tools\Source2Viewer\Source2Viewer.exe`（自包含，免安装） |
+| Source 2 Viewer CLI | `C:\Tools\Source2Viewer\cli\Source2Viewer-CLI.exe` |
+| CS2 安装目录 | `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\` |
+| Godot 4.7.2 | `C:\Users\13569\Desktop\Godot_v4.7.2-stable_win64_console.exe` |
 
-### 新设备需要
+**本机无管理员权限时的安装法（已实测）**：
+- Blender：`msiexec /a "<msi路径>" /qn TARGETDIR="C:\Tools\Blender"`（管理安装只解包，不需要管理员）
+- S2V：github.com 下载被重置/极慢时，用 `https://ghfast.top/<github原始URL>` 镜像（约 600KB/s），
+  下载后按官方元数据字节数校验（S2V.exe=105340600、cli-windows-x64.zip=52735867）
+
+### 换新设备需要
 
 1. **Blender 4.x 或 5.x**（脚本已做版本兼容，glTF 导入算子自动探测）
 2. **Source 2 Viewer**：https://github.com/ValveResourceFormat/ValveResourceFormat/releases
@@ -52,46 +60,76 @@
 
 ## 3. 在新设备重新导出 cs2_agent
 
-1. 打开 Source 2 Viewer → Game Explorer 自动检测 CS2（或手动开
-   `game/csgo/pak01_dir.vpk`）
-2. 搜索 `agents/models/ctm_sas`
-3. 右键 `.vmdl_c` → **Decompile & Export** → 格式选 **glTF**（分离格式即可，
-   本项目的 `.gltf + .bin` 就是这么来的；选 GLB 单文件也行）
-4. 导出到 `prototype/`（此目录已 gitignore，不会误入库）
-5. **验证导出质量**：在 S2V 里双击模型预览，工具栏动画下拉框应能看到
-   idle / run / walk 等序列。看不到动画 → 换一个干员重试（推荐 ctm_sas / ctm_fbi）
+### 方式 A · CLI（推荐，全自动，已实测）
 
-> 提示：S2V 有 CLI 批量模式（`Source2Viewer-CLI`），跑通一个后可批量导出全部动画。
+```bash
+CLI="C:/Tools/Source2Viewer/cli/Source2Viewer-CLI.exe"
+VPK="C:/Program Files (x86)/Steam/steamapps/common/Counter-Strike Global Offensive/game/csgo/pak01_dir.vpk"
+
+# ① 查文件在 VPK 里的确切路径
+"$CLI" -i "$VPK" -f "agents/models/ctm_sas" --vpk_list
+
+# ② 全量导出（~1.1GB，含 2091 个动画；本地存档）
+"$CLI" -i "$VPK" -f "agents/models/ctm_sas/ctm_sas.vmdl_c" -d \
+    --gltf_export_format glb --gltf_export_animations \
+    --gltf_export_materials --gltf_textures_adapt \
+    -o "prototype/cs2_agent_export/cs2_agent.glb" --threads 4
+
+# ③ 精简导出（~3.3MB，只含 6 个核心动作；迭代验证用，推荐）
+R="animation/anims/world/rifle/_default_rifle"
+"$CLI" -i "$VPK" -f "agents/models/ctm_sas/ctm_sas.vmdl_c" -d \
+    --gltf_export_format glb --gltf_export_animations \
+    --gltf_animation_list "$R/idle_rifle,$R/idle_crouch_rifle,$R/walk_n_rifle,$R/run_n_rifle,$R/crouch_n_rifle,$R/jump_stand_rifle" \
+    --gltf_export_materials --gltf_textures_adapt \
+    -o "prototype/cs2_agent_export/cs2_agent_anim6.glb" --threads 4
+```
+
+**CLI 坑（实测）**：
+- `steam:730/...` 路径前缀不被识别（会被当相对路径报错）→ 用绝对路径（正斜杠可）
+- `--game <文件夹>` 会报 `does not exist` → **省略即可**（input 在游戏目录内能自动定位 gameinfo.gi）
+- 动画清单核验：`prototype/cs2_agent_export/` 下的 `inspect_glb.py` / `filter_anims.py`（本地脚本，不入库）
+
+### 方式 B · GUI（备选）
+
+1. 打开 Source 2 Viewer → 开 `game/csgo/pak01_dir.vpk` → 搜索 `agents/models/ctm_sas`
+2. 右键 `.vmdl_c` → **Decompile & Export** → 格式选 **glTF / GLB**
+3. 关口验证：S2V 内双击预览，动画下拉框能看到 idle / run / walk 等序列
 
 ---
 
 ## 4. 已验证的命令流水线
 
 ```bash
-BL="<你的 blender 路径>"   # 例: "D:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
+BL="C:/Tools/Blender/Blender Foundation/Blender 5.2/blender.exe"
 
-# ① 核验模型（骨骼数 / T-pose / 坐标轴 / 必需骨缺失）
-"$BL" -b --factory-startup --python blender/verify_asset.py -- prototype/cs2_agent.gltf
+# ① 核验模型（骨骼数 / 坐标轴 / 必需骨缺失）
+"$BL" -b --factory-startup --python blender/verify_asset.py -- \
+    prototype/cs2_agent_export/cs2_agent_anim6.glb
 
-# ② 跑重定向（真实干员替换 fake_cs2）
+# ② 重定向（含「骨架转正」自动修复；预期 ###MAPPED### 21 + ###MISSING### []）
 "$BL" -b --factory-startup --python blender/retarget_cs2_to_miku.py -- \
-    --cs2 prototype/cs2_agent.gltf \
+    --cs2 prototype/cs2_agent_export/cs2_agent_anim6.glb \
     --miku assets/characters/cat_hatsune_miku.glb \
-    --out prototype/miku_retargeted.glb
+    --out prototype/cs2_agent_export/miku_retargeted_anim6.glb
 
-# ③ 渲染验证（扫 8 个方位角，找出能看到模型的角度）
-"$BL" -b --factory-startup --python blender/render_probe.py -- \
-    --cs2 prototype/cs2_agent.gltf \
+# ③ 渲染验证（一次会话渲染 6 个动作；--hide-cs2 只显 Miku、--aim 自动对位）
+"$BL" -b --factory-startup --python blender/render_check.py -- \
+    --cs2 prototype/cs2_agent_export/cs2_agent_anim6.glb \
     --miku assets/characters/cat_hatsune_miku.glb \
-    --outdir prototype/render --frame 10
+    --outdir "C:/miku-fps/miku-fps/prototype/cs2_agent_export/render_final" \
+    --hide-cs2 1 --aim 1 --az 45 --elev 5 --dist 3.6 \
+    --actions "idle_rifle,idle_crouch_rifle,walk_n_rifle,run_n_rifle,crouch_n_rifle,jump_stand_rifle"
 
-# ④ 量化检查渲染结果（必须！别靠肉眼看深色图）
-"$BL" -b --factory-startup --python blender/check_render.py -- --dir prototype/render
+# ④ 量化检查渲染结果（必须！不靠肉眼判断深色图）
+"$BL" -b --factory-startup --python blender/check_render.py -- \
+    --dir prototype/cs2_agent_export/render_final
 ```
 
-**第②步预期输出**：`###MAPPED### 21` + `###MISSING### []`。
-若 MISSING 非空：脚本会列出真实骨名，把差异补进 `blender/retarget_cs2_to_miku.py`
-的 `BONE_MAP`（映射依据见 `docs/bone_mapping.md`）。
+**第②步预期输出**：`###CS2_UPRIGHT_FIX### applied ...` + `###BONE_MAP_SELECTED### cs2_new(REAL_AGENT)`
++`###MAPPED### 21` +`###MISSING### []`。
+若 MISSING 非空：脚本会列出真实骨名，把差异补进 `BONE_MAP_OLD/_NEW`（依据 `docs/bone_mapping.md`）。
+
+> ⚠️ 渲染脚本的 `--outdir` 一律传**绝对路径**（无头模式相对路径会被解析到盘根，见第 5 节）。
 
 ---
 
@@ -101,7 +139,11 @@ BL="<你的 blender 路径>"   # 例: "D:/Program Files/Blender Foundation/Blend
 |---|---|---|
 | 渲出一张纯深色图 | 方位角不对，差 45° 就完全看不到模型 | 跑 render_probe 扫 8 角度；用 check_render 量化判断 |
 | 渲染「成功」但文件不存在 | `-b` 无头下 EEVEE 假成功 | 必须 `CYCLES` + `device='CPU'` |
+| 渲染产出跑到 `C:\prototype\...` | 无头模式把**相对 outdir** 解析到当前盘根 | 渲染脚本已强制绝对路径；手写脚本注意同样问题 |
 | 包围盒恒为 ±1 | glTF 导入遗留默认 Cube（不在 glTF_not_exported 集合） | 脚本已自动清；自己写脚本时按「Cube 前缀 + ≤24 顶点」排 |
+| **Miku 被驱动成「躺姿」** | **S2V 导出的干员骨架导入后整体躺平（rest 骨方向 ≈ -Y）；约束是 armature 空间匹配** | **脚本已内置 `align_cs2_upright()`（转正 + transform_apply 烘焙），无需手动处理** |
+| 真实干员 MISSING 一大片 | 干员骨骼命名**不是** ValveBiped（CS2 新命名） | 已内置 `BONE_MAP_NEW` + `select_bone_map()` 自动识别；命名再变则按 MISSING 清单补表 |
+| 源网格（士兵）渲染姿态奇怪/腿朝上 | Blender 对「多根节点 skin」导出结构的导入处理问题（文件本身规范） | **不影响骨骼驱动链路**（约束只取骨骼）；源可视化建议用 S2V 预览器 |
 | 映射全部 MISSING | 骨骼名前缀重复拼接 | 用脚本里现成的 `find_cs2_bone`（剥前缀） |
 | `'Bone' has no attribute 'constraints'` | constraints 在 pose bone | `arm.pose.bones[...]` |
 | 5.x 导入算子报错 | `wm.gltf_import` 已改名 | 脚本已兼容，别手写 |
@@ -125,11 +167,15 @@ BL="<你的 blender 路径>"   # 例: "D:/Program Files/Blender Foundation/Blend
 
 ## 7. 下一步（按序）
 
-1. **新设备**：装 Blender + Source 2 Viewer（第 2 节）→ 重新导出 ctm_sas（第 3 节）
-2. 跑第 4 节 ①②，若 MISSING 非空则补 `BONE_MAP`
-3. 跑 ③④，肉眼 + 量化确认 5 个动作：idle / run / walk / crouch / death
-4. 烘焙动作 → 导出 FBX（Forward=-Y, Up=Z）→ Godot 4.7.2 导入验证
-5. Godot 工程搭建（可参考 `Dodoveloper/godot4-fps-prototype` 的压枪弹道）
+1. ~~新设备装工具链 + 重新导出 ctm_sas~~ ✅ 2026-10-09（环境见第 2 节，导出见第 3 节）
+2. ~~跑 ①②，补 BONE_MAP~~ ✅（含「骨架转正」修复：MAPPED 21 / MISSING 0）
+3. ~~跑 ③④，确认核心动作~~ ✅（6 动作渲染 + 量化通过；**death 无动画**——CS2 死亡为
+   ragdoll 物理，动作集改为 idle / run / walk / crouch / jump，可加 `flinch_*`）
+4. **朝向校验**：确认 walk 迈步方向与面朝一致；如反了，在 `align_cs2_upright()` 追加
+   绕 Z 的 180° 修正
+5. 烘焙动作（Bake）→ 导出 FBX（Forward=-Y, Up=Z）→ Godot 4.7.2 导入验证
+   （注：当前约束是「旋转」重定向，骨盆位移未传递，烘焙时考虑叠加）
+6. Godot 工程搭建（可参考 `Dodoveloper/godot4-fps-prototype` 的压枪弹道）
 
 ## 8. 仓库说明
 
