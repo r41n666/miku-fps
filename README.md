@@ -4,13 +4,14 @@
 
 ## 状态
 
-**阶段：真实干员链路 PASS —— 准备进入烘焙 / Godot 阶段**
+**阶段：动画资产管线完成（重定向 → 烘焙 → Godot 导入验证 PASS）—— 下一步 Godot 工程搭建**
 
 - ✅ 可行性确认：无 VAC 风险，无需下载 CS:GO（详见 `docs/preflight_report.md`）
-- ✅ 重定向链路（仿真骨架阶段）：21/21 骨骼映射成功（详见 `docs/validation_report.md`）
-- ✅ **真实干员 `ctm_sas` 端到端跑通**（2026-10-09）：MAPPED 21 / MISSING 0，
-  6 动作渲染验证通过（含「骨架转正」修复；详见 `docs/validation_report.md` 第九节）
-- 🔄 下一步：朝向校验 → 烘焙 → FBX → Godot 工程
+- ✅ 真实干员 `ctm_sas` 端到端跑通（2026-10-09）：MAPPED 21 / MISSING 0，6 动作渲染验证
+- ✅ **烘焙 + Godot 4.7.2 导入验证通过**（2026-10-11）：`miku_anim6.glb`
+  （6 动画 / 111 骨 / 动画驱动骨骼实测 201° / 交付格式判定为 GLB）
+  —— 详见 `docs/validation_report.md` 第十节
+- 🔄 下一步：Godot 工程搭建（接入角色 + 武器 + 音效，做可玩射击原型）
 
 **换设备接手 → 读 `HANDOFF.md`**（环境清单 / CLI 导出步骤 / 已验证命令 / 踩坑速查）。
 

@@ -1,0 +1,12 @@
+; Engine configuration file.
+; miku-fps 导入验证用最小工程（非游戏工程，仅验证 FBX/GLB 导入）
+config_version=5
+
+[application]
+
+config/name="miku-import-test"
+config/features=PackedStringArray("4.7")
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

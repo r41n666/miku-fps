@@ -331,6 +331,41 @@ def main():
     print("###ENGINE###", sc.render.engine, "world=",
           json.dumps([round(v, 3) for v in sc.world.color]))
 
+    # ---- 方位角扫描模式：单动作 × 8 方位角渲染（判定模型朝向用）----
+    # 用途：确认「迈步方向 vs 面朝方向」一致性（HANDOFF §7.4 朝向校验）。
+    sweep = ARGS.get("--sweep-action")
+    if sweep:
+        hits = [a for a in bpy.data.actions if sweep.lower() in a.name.lower()]
+        if not hits:
+            print("###SWEEP_ACTION_MISSING###", sweep)
+            print("###DONE###")
+            return
+        hits.sort(key=lambda a: (not a.name.lower().endswith(sweep.lower()),
+                                 len(a.name)))
+        act = hits[0]
+        ad = getattr(cs2, "animation_data", None)
+        if ad is None:
+            ad = cs2.animation_data_create()
+        ad.action = act
+        try:
+            slots = getattr(act, "slots", None)
+            if slots and len(slots) > 0 and hasattr(ad, "action_slot"):
+                ad.action_slot = slots[0]
+        except Exception:
+            pass
+        fr = act.frame_range
+        f = int(fr[0] + (fr[1] - fr[0]) * 0.3)  # 取动作 30% 处做样本帧
+        sc.frame_set(f)
+        for az in range(0, 360, 45):
+            ARGS["--az"] = str(az)
+            place_camera(cam, miku)
+            sc.render.filepath = os.path.join(outdir, "sweep_az%03d.png" % az)
+            bpy.ops.render.render(write_still=True)
+            print("###SWEEP### az=%d frame=%d exists=%s" % (
+                az, f, os.path.exists(sc.render.filepath)))
+        print("###DONE###")
+        return
+
     # ---- 多动作模式：一次会话内逐个切换动作渲染样本帧 ----
     # 用途：真实 CS2 干员一次导出可含多个动作（idle/walk/run/...），
     #       逐个渲染验证，避免反复启动 Blender 重复导入大模型。
